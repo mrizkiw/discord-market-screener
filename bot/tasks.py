@@ -1,4 +1,5 @@
 import discord
+import datetime
 from discord.ext import tasks, commands
 from services.watchlist import WatchlistService
 from services.market_data import MarketDataService
@@ -17,9 +18,45 @@ class AlertTasks(commands.Cog):
         self.market_service = MarketDataService()
         self.last_alerts = {}
         self.alert_loop.start()
+        self.daily_scanner_loop.start()
 
     def cog_unload(self):
         self.alert_loop.cancel()
+        self.daily_scanner_loop.cancel()
+
+    @tasks.loop(time=datetime.time(hour=0, minute=0, tzinfo=datetime.timezone.utc))
+    async def daily_scanner_loop(self):
+        await self.bot.wait_until_ready()
+        from services.scanner import ScannerService
+        scanner = ScannerService()
+        scanner.refresh_daily_picks()
+        symbols = scanner.get_daily_picks()
+        
+        if not symbols:
+            return
+            
+        targets = self.watchlist.get_all_targets()
+        channels = set()
+        for users in targets.values():
+            for u in users:
+                channels.add(int(u['channel_id']))
+                
+        if channels:
+            embed = discord.Embed(
+                title="🌟 Daily Top Volume Movers 🌟",
+                description="Top 5 spot coins moving today with strong liquidity (3-30% gain, >$10M volume).",
+                color=discord.Color.purple()
+            )
+            embed.add_field(name="Top Picks", value="\n".join(f"• **{s}**" for s in symbols), inline=False)
+            embed.set_footer(text="Add these to your watchlist with /wl_add if you spot a good setup!")
+            
+            for ch_id in channels:
+                channel = self.bot.get_channel(ch_id)
+                if channel:
+                    try:
+                        await channel.send(embed=embed)
+                    except Exception as e:
+                        print(f"Failed to send daily picks to {ch_id}: {e}")
 
     @tasks.loop(minutes=5)
     async def alert_loop(self):

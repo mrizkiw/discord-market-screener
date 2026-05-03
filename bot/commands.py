@@ -121,5 +121,24 @@ class MonitorCog(commands.Cog):
         else:
             await interaction.response.send_message(f"📋 **Your Watchlist:**\n" + ", ".join(f"`{s}`" for s in symbols))
 
+    @app_commands.command(name="daily_picks", description="Get today's top potential coins based on volume and momentum")
+    async def daily_picks(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        from services.scanner import ScannerService
+        scanner = ScannerService()
+        picks = scanner.get_daily_picks()
+        
+        if not picks:
+            await interaction.followup.send("Failed to fetch daily picks.")
+            return
+            
+        embed = discord.Embed(title="🌟 Today's Potential Coins", description="Coins with high liquidity and positive momentum for today.", color=discord.Color.gold())
+        
+        picks_str = "\n".join([f"**{i+1}.** `{symbol}`" for i, symbol in enumerate(picks)])
+        embed.add_field(name="Top Picks", value=picks_str, inline=False)
+        embed.set_footer(text="Updates daily. Use /wl_add to monitor them.")
+        
+        await interaction.followup.send(embed=embed)
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(MonitorCog(bot))

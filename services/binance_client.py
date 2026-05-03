@@ -39,3 +39,9 @@ class BinanceClient:
         response = requests.get(url, params=params)
         response.raise_for_status()
         return response.json()
+
+    def get_24hr_tickers(self):
+        url = f"{self.base_url}/api/v3/ticker/24hr"
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
