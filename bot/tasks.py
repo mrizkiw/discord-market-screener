@@ -123,7 +123,7 @@ class AlertTasks(commands.Cog):
                             
                             embed = build_basic_response(symbol, last_price, len(df), DEFAULT_TIMEFRAME, structure, breakout, avp, rec, mtf)
                             embed.title = f"🟡 EARLY WARNING: {symbol} 🟡"
-                            embed.description = f"**{early_reason}** at `{early_level:.6f}`. Get ready!"
+                            embed.description = f"**{early_reason}** at `{early_level:.8f}`. Get ready!"
                             
                             for u in users:
                                 channel = self.bot.get_channel(int(u['channel_id']))
