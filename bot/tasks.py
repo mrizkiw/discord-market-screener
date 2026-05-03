@@ -36,28 +36,63 @@ class AlertTasks(commands.Cog):
                 
                 structure = get_market_structure(df)
                 breakout = detect_breakout(df, structure)
+                avp = calculate_avp(df, structure)
+                
+                last_price = float(df.iloc[-1]["close"])
                 
                 if breakout.state == "valid":
-                    cache_key = f"{symbol}_{breakout.level}"
+                    cache_key = f"{symbol}_{breakout.level}_confirmed"
                     if cache_key in self.last_alerts:
                         continue
                         
                     self.last_alerts[cache_key] = True
                     
-                    avp = calculate_avp(df, structure)
                     rec = build_recommendation(df, structure, breakout, avp)
                     mtf = analyze_mtf(symbol, DEFAULT_TIMEFRAME, self.market_service)
                     
-                    last_price = float(df.iloc[-1]["close"])
-                    
                     embed = build_basic_response(symbol, last_price, len(df), DEFAULT_TIMEFRAME, structure, breakout, avp, rec, mtf)
-                    embed.title = f"🚨 ALERT: {symbol} Breakout! 🚨"
+                    embed.title = f"🚨 CONFIRMED ALERT: {symbol} Breakout! 🚨"
                     
                     for u in users:
                         channel = self.bot.get_channel(int(u['channel_id']))
                         if channel:
-                            await channel.send(content=f"<@{u['user_id']}> Breakout detected for {symbol}!", embed=embed)
+                            await channel.send(content=f"<@{u['user_id']}> Confirmed breakout detected for {symbol}!", embed=embed)
                             
+                else:
+                    # Early Warning Logic
+                    is_early = False
+                    early_reason = ""
+                    early_level = 0.0
+                    
+                    sh = structure.latest_swing_high
+                    sl = structure.latest_swing_low
+                    
+                    if sh and (sh * 0.99) <= last_price < sh:
+                        is_early, early_reason, early_level = True, "Approaching Swing High", sh
+                    elif avp.vah and (avp.vah * 0.99) <= last_price < avp.vah:
+                        is_early, early_reason, early_level = True, "Approaching VAH", avp.vah
+                    elif sl and (sl * 1.01) >= last_price > sl:
+                        is_early, early_reason, early_level = True, "Approaching Swing Low", sl
+                    elif avp.val and (avp.val * 1.01) >= last_price > avp.val:
+                        is_early, early_reason, early_level = True, "Approaching VAL", avp.val
+                        
+                    if is_early:
+                        cache_key = f"{symbol}_{early_level}_early"
+                        if cache_key not in self.last_alerts:
+                            self.last_alerts[cache_key] = True
+                            
+                            rec = build_recommendation(df, structure, breakout, avp)
+                            mtf = analyze_mtf(symbol, DEFAULT_TIMEFRAME, self.market_service)
+                            
+                            embed = build_basic_response(symbol, last_price, len(df), DEFAULT_TIMEFRAME, structure, breakout, avp, rec, mtf)
+                            embed.title = f"🟡 EARLY WARNING: {symbol} 🟡"
+                            embed.description = f"**{early_reason}** at `{early_level:.6f}`. Get ready!"
+                            
+                            for u in users:
+                                channel = self.bot.get_channel(int(u['channel_id']))
+                                if channel:
+                                    await channel.send(content=f"<@{u['user_id']}> {symbol} is making a move!", embed=embed)
+                                    
             except Exception as e:
                 print(f"Alert loop error on {symbol}: {e}")
 

@@ -47,7 +47,30 @@ def build_recommendation(df: pd.DataFrame, structure: StructureResult, breakout:
             confidence = "Medium"
             note = "Price is overextended downwards, wait for retest."
             
-    sl, tp1, tp2, tp3 = calculate_levels(direction, current_price, structure)
+    elif structure.trend_label == "range":
+        if avp.val and current_price <= avp.val * 1.01:
+            status = "Buy range low"
+            entry_text = f"Price is near Value Area Low. Entry around {current_price:.6f}."
+            confidence = "Medium"
+            note = "Fading the range low."
+            direction = "range_bullish"
+        elif avp.vah and current_price >= avp.vah * 0.99:
+            status = "Sell range high"
+            entry_text = f"Price is near Value Area High. Entry around {current_price:.6f}."
+            confidence = "Medium"
+            note = "Fading the range high."
+            direction = "range_bearish"
+            
+    if direction in ["bullish", "bearish"]:
+        sl, tp1, tp2, tp3 = calculate_levels(direction, current_price, structure)
+    elif direction == "range_bullish":
+        sl = structure.latest_swing_low if structure.latest_swing_low else current_price * 0.98
+        tp1, tp2, tp3 = avp.poc, avp.vah, structure.latest_swing_high
+    elif direction == "range_bearish":
+        sl = structure.latest_swing_high if structure.latest_swing_high else current_price * 1.02
+        tp1, tp2, tp3 = avp.poc, avp.val, structure.latest_swing_low
+    else:
+        sl, tp1, tp2, tp3 = None, None, None, None
     
     if status == "Wait":
         sl, tp1, tp2, tp3 = None, None, None, None

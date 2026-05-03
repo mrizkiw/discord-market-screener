@@ -1,14 +1,17 @@
 import requests
-from config import BINANCE_BASE_URL
+import time
+from config import BINANCE_BASE_URL, CACHE_TTL
 
 class BinanceClient:
     def __init__(self):
         self.base_url = BINANCE_BASE_URL
         self._exchange_info_cache = None
+        self._exchange_info_timestamp = 0
     
     def get_exchange_info(self):
-        # Basic cache to avoid rate limits
-        if self._exchange_info_cache:
+        # Basic cache to avoid rate limits with TTL
+        now = time.time()
+        if self._exchange_info_cache and (now - self._exchange_info_timestamp < CACHE_TTL):
             return self._exchange_info_cache
         
         url = f"{self.base_url}/api/v3/exchangeInfo"
@@ -16,6 +19,7 @@ class BinanceClient:
         response.raise_for_status()
         data = response.json()
         self._exchange_info_cache = data
+        self._exchange_info_timestamp = now
         return data
 
     def get_symbol_info(self, symbol: str):

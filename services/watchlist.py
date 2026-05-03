@@ -1,12 +1,24 @@
 import json
 import os
+import threading
 from typing import List, Dict
 
 WATCHLIST_FILE = "watchlist.json"
 
 class WatchlistService:
-    def __init__(self):
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(WatchlistService, cls).__new__(cls)
+                cls._instance._init_once()
+            return cls._instance
+
+    def _init_once(self):
         self._data = self._load()
+        self._file_lock = threading.Lock()
         
     def _load(self) -> dict:
         if not os.path.exists(WATCHLIST_FILE):
@@ -18,8 +30,9 @@ class WatchlistService:
             return {}
             
     def _save(self):
-        with open(WATCHLIST_FILE, 'w') as f:
-            json.dump(self._data, f, indent=4)
+        with self._file_lock:
+            with open(WATCHLIST_FILE, 'w') as f:
+                json.dump(self._data, f, indent=4)
             
     def add(self, user_id: int, channel_id: int, symbol: str) -> bool:
         uid = str(user_id)
