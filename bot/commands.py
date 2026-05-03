@@ -22,10 +22,14 @@ class MonitorCog(commands.Cog):
         matches = [s for s in symbols if current in s]
         matches.sort(key=lambda s: (not s.startswith(current), s))
         
-        return [
-            app_commands.Choice(name=match, value=match)
-            for match in matches[:25]
-        ]
+        choices = []
+        if not current or "DAILY_PICKS".startswith(current):
+            choices.append(app_commands.Choice(name="daily_picks (Auto-add top 5 coins)", value="daily_picks"))
+            
+        for match in matches[:24]:
+            choices.append(app_commands.Choice(name=match, value=match))
+            
+        return choices[:25]
 
     @app_commands.command(name="monitor", description="Monitor a Binance Spot symbol")
     @app_commands.autocomplete(symbol=symbol_autocomplete)
@@ -90,16 +94,38 @@ class MonitorCog(commands.Cog):
             embed.add_field(name="Chart Error", value=str(e), inline=False)
             await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="wl_add", description="Add a symbol to your watchlist")
+    @app_commands.command(name="wl_add", description="Add a symbol or 'daily_picks' to your watchlist")
     @app_commands.autocomplete(symbol=symbol_autocomplete)
     async def wl_add(self, interaction: discord.Interaction, symbol: str):
+        await interaction.response.defer()
         norm = normalize_symbol(symbol)
         from services.watchlist import WatchlistService
         ws = WatchlistService()
+        
+        if norm == "DAILY_PICKS":
+            from services.scanner import ScannerService
+            scanner = ScannerService()
+            picks = scanner.get_daily_picks()
+            
+            if not picks:
+                await interaction.followup.send("Failed to fetch daily picks.")
+                return
+                
+            added = []
+            for pick in picks:
+                if ws.add(interaction.user.id, interaction.channel_id, pick):
+                    added.append(pick)
+                    
+            if added:
+                await interaction.followup.send(f"✅ Added daily picks to your watchlist:\n" + ", ".join(f"`{s}`" for s in added))
+            else:
+                await interaction.followup.send("⚠️ All daily picks are already in your watchlist.")
+            return
+
         if ws.add(interaction.user.id, interaction.channel_id, norm):
-            await interaction.response.send_message(f"✅ Added `{norm}` to your watchlist.")
+            await interaction.followup.send(f"✅ Added `{norm}` to your watchlist.")
         else:
-            await interaction.response.send_message(f"⚠️ `{norm}` is already in your watchlist.")
+            await interaction.followup.send(f"⚠️ `{norm}` is already in your watchlist.")
 
     @app_commands.command(name="wl_remove", description="Remove a symbol from your watchlist")
     async def wl_remove(self, interaction: discord.Interaction, symbol: str):

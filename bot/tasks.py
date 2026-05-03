@@ -19,10 +19,12 @@ class AlertTasks(commands.Cog):
         self.last_alerts = {}
         self.alert_loop.start()
         self.daily_scanner_loop.start()
+        self.picks_tracker_loop.start()
 
     def cog_unload(self):
         self.alert_loop.cancel()
         self.daily_scanner_loop.cancel()
+        self.picks_tracker_loop.cancel()
 
     @tasks.loop(time=datetime.time(hour=0, minute=0, tzinfo=datetime.timezone.utc))
     async def daily_scanner_loop(self):
@@ -57,6 +59,69 @@ class AlertTasks(commands.Cog):
                         await channel.send(embed=embed)
                     except Exception as e:
                         print(f"Failed to send daily picks to {ch_id}: {e}")
+
+    @tasks.loop(time=[datetime.time(hour=h, minute=m, tzinfo=datetime.timezone.utc) for h in range(24) for m in (0, 30)])
+    async def picks_tracker_loop(self):
+        await self.bot.wait_until_ready()
+        import asyncio
+        await asyncio.sleep(5) # Wait 5 seconds to ensure Binance candles have rolled over
+        
+        from services.scanner import ScannerService
+        scanner = ScannerService()
+        symbols = scanner.get_daily_picks()
+        if not symbols: return
+        
+        targets = self.watchlist.get_all_targets()
+        channels = set()
+        for users in targets.values():
+            for u in users:
+                channels.add(int(u['channel_id']))
+        if not channels: return
+        
+        embed = discord.Embed(
+            title="📊 Daily Picks Performance",
+            description="Tracking profit/loss of today's top picks.\n`Daily`: Since 00:00 UTC | `Last 30m`: Previous 30m candle.",
+            color=discord.Color.blue()
+        )
+        
+        perf_text = []
+        for sym in symbols:
+            try:
+                # 1. Fetch Daily Performance
+                df_1d = self.market_service.fetch_candles(sym, "1d", 2)
+                pct_daily = 0.0
+                current_price = 0.0
+                if not df_1d.empty:
+                    today_candle = df_1d.iloc[-1]
+                    open_daily = float(today_candle["open"])
+                    current_price = float(today_candle["close"])
+                    if open_daily > 0:
+                        pct_daily = ((current_price - open_daily) / open_daily) * 100
+                        
+                # 2. Fetch 30m Performance
+                df_30m = self.market_service.fetch_candles(sym, "30m", 2)
+                pct_30m = 0.0
+                if not df_30m.empty and len(df_30m) >= 2:
+                    closed_30m = df_30m.iloc[-2]
+                    open_30m = float(closed_30m["open"])
+                    close_30m = float(closed_30m["close"])
+                    if open_30m > 0:
+                        pct_30m = ((close_30m - open_30m) / open_30m) * 100
+                        
+                emoji = "🟢" if pct_daily >= 0 else "🔴"
+                perf_text.append(f"{emoji} **{sym}**: `{current_price:.8f}`\n└ Daily: **{pct_daily:+.2f}%** | Last 30m: **{pct_30m:+.2f}%**")
+            except Exception as e:
+                print(f"Error fetching perf for {sym}: {e}")
+                
+        if perf_text:
+            embed.add_field(name="Performance", value="\n".join(perf_text), inline=False)
+            for ch_id in channels:
+                channel = self.bot.get_channel(ch_id)
+                if channel:
+                    try:
+                        await channel.send(embed=embed)
+                    except Exception as e:
+                        pass
 
     @tasks.loop(minutes=5)
     async def alert_loop(self):
