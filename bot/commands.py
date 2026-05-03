@@ -1,0 +1,85 @@
+import discord
+from discord import app_commands
+from discord.ext import commands
+from utils.validators import normalize_symbol, is_valid_spot_symbol
+from services.market_data import MarketDataService
+from bot.embeds import build_basic_response, build_error_embed
+from config import DEFAULT_TIMEFRAME, DEFAULT_CANDLE_LIMIT
+
+class MonitorCog(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self.market_service = MarketDataService()
+
+    async def symbol_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+        try:
+            info = self.market_service.client.get_exchange_info()
+            symbols = [s['symbol'] for s in info.get("symbols", []) if is_valid_spot_symbol(s)]
+        except Exception:
+            return []
+            
+        current = current.upper()
+        matches = [s for s in symbols if current in s]
+        matches.sort(key=lambda s: (not s.startswith(current), s))
+        
+        return [
+            app_commands.Choice(name=match, value=match)
+            for match in matches[:25]
+        ]
+
+    @app_commands.command(name="monitor", description="Monitor a Binance Spot symbol")
+    @app_commands.autocomplete(symbol=symbol_autocomplete)
+    @app_commands.describe(timeframe="E.g., 5m, 15m, 1h, 4h, 1d (Default: 4h)")
+    async def monitor(self, interaction: discord.Interaction, symbol: str, timeframe: str = DEFAULT_TIMEFRAME):
+        await interaction.response.defer(thinking=True)
+        
+        norm_symbol = normalize_symbol(symbol)
+        tf = timeframe.lower()
+        
+        # 1. Validation
+        try:
+            info = self.market_service.client.get_symbol_info(norm_symbol)
+        except Exception as e:
+            await interaction.followup.send(embed=build_error_embed(f"Failed to communicate with Binance API."))
+            return
+            
+        if not info:
+            await interaction.followup.send(embed=build_error_embed(f"Symbol {norm_symbol} not found on Binance."))
+            return
+            
+        if not is_valid_spot_symbol(info):
+            await interaction.followup.send(embed=build_error_embed(f"Symbol {norm_symbol} is not a valid or active Spot pair."))
+            return
+            
+        # 2. Fetch data
+        try:
+            df = self.market_service.fetch_candles(norm_symbol, tf, DEFAULT_CANDLE_LIMIT)
+        except Exception as e:
+            await interaction.followup.send(embed=build_error_embed(f"Failed to fetch market data (invalid timeframe '{tf}'?): {str(e)}"))
+            return
+            
+        if df.empty:
+            await interaction.followup.send(embed=build_error_embed("Received empty market data."))
+            return
+            
+        from analysis.structure import get_market_structure
+        from analysis.breakout import detect_breakout
+        from analysis.avp import calculate_avp
+        from analysis.recommendation import build_recommendation
+        from analysis.multi_tf import analyze_mtf
+        
+        structure = get_market_structure(df)
+        breakout = detect_breakout(df, structure)
+        avp = calculate_avp(df, structure)
+        recommendation = build_recommendation(df, structure, breakout, avp)
+        mtf = analyze_mtf(norm_symbol, tf, self.market_service)
+        
+        last_price = float(df.iloc[-1]["close"])
+        candle_count = len(df)
+        
+        # 3. Response
+        embed = build_basic_response(norm_symbol, last_price, candle_count, tf, structure, breakout, avp, recommendation, mtf)
+        await interaction.followup.send(embed=embed)
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(MonitorCog(bot))
