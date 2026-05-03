@@ -67,6 +67,7 @@ class MonitorCog(commands.Cog):
         from analysis.avp import calculate_avp
         from analysis.recommendation import build_recommendation
         from analysis.multi_tf import analyze_mtf
+        from analysis.charting import generate_chart
         
         structure = get_market_structure(df)
         breakout = detect_breakout(df, structure)
@@ -79,7 +80,46 @@ class MonitorCog(commands.Cog):
         
         # 3. Response
         embed = build_basic_response(norm_symbol, last_price, candle_count, tf, structure, breakout, avp, recommendation, mtf)
-        await interaction.followup.send(embed=embed)
+        
+        try:
+            chart_buf = generate_chart(norm_symbol, df, structure, avp)
+            file = discord.File(chart_buf, filename="chart.png")
+            embed.set_image(url="attachment://chart.png")
+            await interaction.followup.send(embed=embed, file=file)
+        except Exception as e:
+            embed.add_field(name="Chart Error", value=str(e), inline=False)
+            await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="wl_add", description="Add a symbol to your watchlist")
+    @app_commands.autocomplete(symbol=symbol_autocomplete)
+    async def wl_add(self, interaction: discord.Interaction, symbol: str):
+        norm = normalize_symbol(symbol)
+        from services.watchlist import WatchlistService
+        ws = WatchlistService()
+        if ws.add(interaction.user.id, interaction.channel_id, norm):
+            await interaction.response.send_message(f"✅ Added `{norm}` to your watchlist.")
+        else:
+            await interaction.response.send_message(f"⚠️ `{norm}` is already in your watchlist.")
+
+    @app_commands.command(name="wl_remove", description="Remove a symbol from your watchlist")
+    async def wl_remove(self, interaction: discord.Interaction, symbol: str):
+        norm = normalize_symbol(symbol)
+        from services.watchlist import WatchlistService
+        ws = WatchlistService()
+        if ws.remove(interaction.user.id, norm):
+            await interaction.response.send_message(f"🗑️ Removed `{norm}` from your watchlist.")
+        else:
+            await interaction.response.send_message(f"⚠️ `{norm}` was not found in your watchlist.")
+
+    @app_commands.command(name="wl_list", description="View your watchlist")
+    async def wl_list(self, interaction: discord.Interaction):
+        from services.watchlist import WatchlistService
+        ws = WatchlistService()
+        symbols = ws.get_user_symbols(interaction.user.id)
+        if not symbols:
+            await interaction.response.send_message("📭 Your watchlist is empty. Use `/wl_add` to start tracking.")
+        else:
+            await interaction.response.send_message(f"📋 **Your Watchlist:**\n" + ", ".join(f"`{s}`" for s in symbols))
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MonitorCog(bot))

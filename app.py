@@ -3,6 +3,7 @@ from discord.ext import commands
 import asyncio
 from config import DISCORD_TOKEN
 from bot.commands import setup as setup_commands
+from bot.tasks import setup as setup_tasks
 
 class MarketScreenerBot(commands.Bot):
     def __init__(self):
@@ -14,6 +15,7 @@ class MarketScreenerBot(commands.Bot):
 
     async def setup_hook(self):
         await setup_commands(self)
+        await setup_tasks(self)
         await self.tree.sync()
         print("Bot commands synced!")
 
