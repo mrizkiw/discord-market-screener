@@ -153,12 +153,15 @@ class AlertTasks(commands.Cog):
                     mtf = analyze_mtf(symbol, DEFAULT_TIMEFRAME, self.market_service)
                     
                     embed = build_basic_response(symbol, last_price, len(df), DEFAULT_TIMEFRAME, structure, breakout, avp, rec, mtf)
-                    embed.title = f"🚨 CONFIRMED ALERT: {symbol} Breakout! 🚨"
+                    
+                    is_bearish = breakout.direction == "bearish" or "Avoid" in rec.status
+                    embed.title = f"🚨 DANGER: {symbol} Breakdown! 🚨" if is_bearish else f"🚨 CONFIRMED ALERT: {symbol} Breakout! 🚨"
                     
                     for u in users:
                         channel = self.bot.get_channel(int(u['channel_id']))
                         if channel:
-                            await channel.send(content=f"<@{u['user_id']}> Confirmed breakout detected for {symbol}!", embed=embed)
+                            msg = f"<@{u['user_id']}> Warning: Bearish breakdown for {symbol}!" if is_bearish else f"<@{u['user_id']}> Confirmed breakout detected for {symbol}!"
+                            await channel.send(content=msg, embed=embed)
                             
                 else:
                     # Early Warning Logic
@@ -184,6 +187,11 @@ class AlertTasks(commands.Cog):
                             self.last_alerts[cache_key] = True
                             
                             rec = build_recommendation(df, structure, breakout, avp)
+                            
+                            # Skip spammy early warnings if the recommendation is to Avoid anyway
+                            if "Avoid" in rec.status:
+                                continue
+                                
                             mtf = analyze_mtf(symbol, DEFAULT_TIMEFRAME, self.market_service)
                             
                             embed = build_basic_response(symbol, last_price, len(df), DEFAULT_TIMEFRAME, structure, breakout, avp, rec, mtf)

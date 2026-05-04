@@ -39,7 +39,19 @@ def build_recommendation(df: pd.DataFrame, structure: StructureResult, breakout:
         note = "Bearish structure. No shorting in Spot."
             
     elif structure.trend_label == "range":
-        if avp.val and current_price <= avp.val * 1.01:
+        if breakout.state == "valid" and breakout.direction == "bearish":
+            status = "Avoid (Breakdown)"
+            entry_text = "**Warning:** Market is breaking down from the range.\n**Strategy:** Spot market only. Do not buy until structure reverses."
+            confidence = "High"
+            note = "Valid bearish breakdown out of range."
+            direction = "neutral"
+        elif breakout.state == "valid" and breakout.direction == "bullish":
+            status = "Buy Breakout"
+            entry_text = f"**Entry Zone:** `{structure.latest_swing_high:.8f}` (Retest) to `{current_price:.8f}` (Current)\n**Strategy:** Enter partial now, range is breaking up."
+            confidence = "High"
+            note = "Valid bullish breakout out of range."
+            direction = "bullish"
+        elif avp.val and current_price <= avp.val * 1.01:
             status = "Buy range low"
             entry_text = f"**Entry Zone:** `{avp.val:.8f}` (VAL) to `{current_price:.8f}` (Current)\n**Strategy:** Fading the range. Buy near the bottom support."
             confidence = "Medium"
