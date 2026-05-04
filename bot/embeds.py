@@ -39,10 +39,15 @@ def build_basic_response(symbol: str, price: float, candle_count: int, interval:
         embed.add_field(name="Notes", value=recommendation.note, inline=True)
         
         if recommendation.sl:
-            tp_str = f"TP1: {recommendation.tp1:.8f}" if recommendation.tp1 else ""
-            if recommendation.tp2: tp_str += f" | TP2: {recommendation.tp2:.8f}"
-            if recommendation.tp3: tp_str += f" | TP3: {recommendation.tp3:.8f}"
-            embed.add_field(name="Targets", value=f"SL: {recommendation.sl:.8f}\n{tp_str}", inline=False)
+            def calc_pct(target):
+                return f"{((target - price) / price) * 100:+.2f}%"
+                
+            sl_pct = calc_pct(recommendation.sl)
+            tp_str = f"TP1: {recommendation.tp1:.8f} ({calc_pct(recommendation.tp1)})" if recommendation.tp1 else ""
+            if recommendation.tp2: tp_str += f" | TP2: {recommendation.tp2:.8f} ({calc_pct(recommendation.tp2)})"
+            if recommendation.tp3: tp_str += f" | TP3: {recommendation.tp3:.8f} ({calc_pct(recommendation.tp3)})"
+            
+            embed.add_field(name="Targets", value=f"SL: {recommendation.sl:.8f} ({sl_pct})\n{tp_str}", inline=False)
     if mtf and mtf.macro_tf != "None":
         embed.add_field(name="MTF Confluence", value=f"**{mtf.confluence}**\nMacro ({mtf.macro_tf}): {mtf.macro_trend} / {mtf.macro_bias.title()}\nMicro ({mtf.micro_tf}): {mtf.micro_trend} / {mtf.micro_bias.title()}", inline=False)
         

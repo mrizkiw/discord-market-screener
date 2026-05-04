@@ -33,7 +33,7 @@ class MonitorCog(commands.Cog):
 
     @app_commands.command(name="monitor", description="Monitor a Binance Spot symbol")
     @app_commands.autocomplete(symbol=symbol_autocomplete)
-    @app_commands.describe(timeframe="E.g., 5m, 15m, 1h, 4h, 1d (Default: 4h)")
+    @app_commands.describe(timeframe="E.g., 5m, 15m, 30m, 1h, 4h, 1d (Default: 30m)")
     async def monitor(self, interaction: discord.Interaction, symbol: str, timeframe: str = DEFAULT_TIMEFRAME):
         await interaction.response.defer(thinking=True)
         
