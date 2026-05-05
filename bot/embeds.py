@@ -1,4 +1,5 @@
 import discord
+import datetime
 from models.market import StructureResult, BreakoutResult, AVPResult, RecommendationResult, MTFResult
 
 def build_basic_response(symbol: str, price: float, candle_count: int, interval: str,
@@ -10,6 +11,7 @@ def build_basic_response(symbol: str, price: float, candle_count: int, interval:
     color = discord.Color.blue()
     if recommendation:
         if "Buy" in recommendation.status: color = discord.Color.green()
+        elif "Avoid" in recommendation.status: color = discord.Color.red()
         elif "Sell" in recommendation.status: color = discord.Color.red()
         
     embed = discord.Embed(
@@ -52,6 +54,7 @@ def build_basic_response(symbol: str, price: float, candle_count: int, interval:
         embed.add_field(name="MTF Confluence", value=f"**{mtf.confluence}**\nMacro ({mtf.macro_tf}): {mtf.macro_trend} / {mtf.macro_bias.title()}\nMicro ({mtf.micro_tf}): {mtf.micro_trend} / {mtf.micro_bias.title()}", inline=False)
         
     embed.add_field(name="Last Price", value=f"{price:.8f}", inline=False)
+    embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
     return embed
 
 def build_error_embed(message: str) -> discord.Embed:

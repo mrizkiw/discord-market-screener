@@ -8,6 +8,7 @@ from analysis.breakout import detect_breakout
 from analysis.avp import calculate_avp
 from analysis.recommendation import build_recommendation
 from analysis.multi_tf import analyze_mtf
+from analysis.charting import generate_chart
 from bot.embeds import build_basic_response
 from config import DEFAULT_TIMEFRAME
 
@@ -157,11 +158,21 @@ class AlertTasks(commands.Cog):
                     is_bearish = breakout.direction == "bearish" or "Avoid" in rec.status
                     embed.title = f"🚨 DANGER: {symbol} Breakdown! 🚨" if is_bearish else f"🚨 CONFIRMED ALERT: {symbol} Breakout! 🚨"
                     
+                    try:
+                        chart_buf = generate_chart(symbol, df, structure, avp)
+                        chart_file = discord.File(chart_buf, filename="chart.png")
+                        embed.set_image(url="attachment://chart.png")
+                    except Exception:
+                        chart_file = None
+                    
                     for u in users:
                         channel = self.bot.get_channel(int(u['channel_id']))
                         if channel:
                             msg = f"<@{u['user_id']}> Warning: Bearish breakdown for {symbol}!" if is_bearish else f"<@{u['user_id']}> Confirmed breakout detected for {symbol}!"
-                            await channel.send(content=msg, embed=embed)
+                            if chart_file:
+                                chart_buf.seek(0)
+                                chart_file = discord.File(chart_buf, filename="chart.png")
+                            await channel.send(content=msg, embed=embed, file=chart_file)
                             
                 else:
                     # Early Warning Logic
@@ -198,10 +209,20 @@ class AlertTasks(commands.Cog):
                             embed.title = f"🟡 EARLY WARNING: {symbol} 🟡"
                             embed.description = f"**{early_reason}** at `{early_level:.8f}`. Get ready!"
                             
+                            try:
+                                chart_buf = generate_chart(symbol, df, structure, avp)
+                                chart_file = discord.File(chart_buf, filename="chart.png")
+                                embed.set_image(url="attachment://chart.png")
+                            except Exception:
+                                chart_file = None
+                            
                             for u in users:
                                 channel = self.bot.get_channel(int(u['channel_id']))
                                 if channel:
-                                    await channel.send(content=f"<@{u['user_id']}> {symbol} is making a move!", embed=embed)
+                                    if chart_file:
+                                        chart_buf.seek(0)
+                                        chart_file = discord.File(chart_buf, filename="chart.png")
+                                    await channel.send(content=f"<@{u['user_id']}> {symbol} is making a move!", embed=embed, file=chart_file)
                                     
             except Exception as e:
                 print(f"Alert loop error on {symbol}: {e}")
