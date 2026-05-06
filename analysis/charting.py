@@ -1,5 +1,8 @@
 import io
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend, required for thread safety
+import matplotlib.pyplot as plt
 import mplfinance as mpf
 from models.market import StructureResult, AVPResult
 
@@ -59,5 +62,6 @@ def generate_chart(symbol: str, df: pd.DataFrame, structure: StructureResult, av
     fig, axlist = mpf.plot(df_chart, addplot=ap, **kwargs)
     
     fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+    plt.close(fig)  # Explicitly close figure to free memory
     buf.seek(0)
     return buf

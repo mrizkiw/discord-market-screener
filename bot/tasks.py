@@ -246,6 +246,8 @@ class AlertTasks(commands.Cog):
                                         chart_file = discord.File(chart_buf, filename="chart.png")
                                     await channel.send(content=f"<@{u['user_id']}> {symbol} is making a move!", embed=embed, file=chart_file)
                                     
+            except discord.Forbidden as e:
+                print(f"[PERMISSION ERROR] Bot missing permissions for {symbol}. Check bot role in that channel. ({e})")
             except Exception as e:
                 print(f"Alert loop error on {symbol}: {e}")
 
