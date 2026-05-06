@@ -146,7 +146,7 @@ class AlertTasks(commands.Cog):
                     except Exception as e:
                         pass
 
-    @tasks.loop(minutes=5)
+    @tasks.loop(minutes=2)
     async def alert_loop(self):
         await self.bot.wait_until_ready()
         
