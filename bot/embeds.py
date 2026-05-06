@@ -11,6 +11,7 @@ def build_basic_response(symbol: str, price: float, candle_count: int, interval:
     color = discord.Color.blue()
     if recommendation:
         if "Buy" in recommendation.status: color = discord.Color.green()
+        elif "Watch" in recommendation.status: color = discord.Color.orange()
         elif "Avoid" in recommendation.status: color = discord.Color.red()
         elif "Sell" in recommendation.status: color = discord.Color.red()
         

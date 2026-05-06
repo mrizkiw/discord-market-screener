@@ -33,10 +33,24 @@ def build_recommendation(df: pd.DataFrame, structure: StructureResult, breakout:
             
     elif structure.trend_label == "LH-LL":
         direction = "bearish"
-        status = "Avoid (Downtrend)"
-        entry_text = "**Warning:** Market is in a downtrend.\n**Strategy:** Spot market only. Do not buy until structure reverses."
-        confidence = "High"
-        note = "Bearish structure. No shorting in Spot."
+        sl_level = structure.latest_swing_high if structure.latest_swing_high else current_price
+        
+        if breakout.state == "valid" and breakout.direction == "bullish" and avp.bias == "bullish":
+            # CHoCH: Bullish breakout inside a downtrend — potential trend reversal signal
+            status = "Watch (CHoCH Signal)"
+            entry_text = (
+                f"**⚠️ Change of Character detected in downtrend!**\n"
+                f"**Entry Zone:** `{breakout.level:.8f}` (Retest) to `{current_price:.8f}` (Current)\n"
+                f"**Strategy:** High-risk entry. Enter small size only if price holds above `{breakout.level:.8f}` on retest."
+            )
+            confidence = "Low"
+            note = "Downtrend CHoCH. Structure not yet reversed. Proceed with caution."
+            direction = "bullish"
+        else:
+            status = "Avoid (Downtrend)"
+            entry_text = "**Warning:** Market is in a downtrend.\n**Strategy:** Spot market only. Do not buy until structure reverses."
+            confidence = "High"
+            note = "Bearish structure. No shorting in Spot."
             
     elif structure.trend_label == "range":
         if breakout.state == "valid" and breakout.direction == "bearish":
