@@ -1,9 +1,20 @@
 import requests
 import time
+import threading
 from config import BINANCE_BASE_URL, CACHE_TTL
 
 class BinanceClient:
-    def __init__(self):
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(BinanceClient, cls).__new__(cls)
+                cls._instance._init_once()
+            return cls._instance
+
+    def _init_once(self):
         self.base_url = BINANCE_BASE_URL
         self._exchange_info_cache = None
         self._exchange_info_timestamp = 0

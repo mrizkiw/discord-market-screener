@@ -18,7 +18,7 @@ def calculate_avp(df: pd.DataFrame, structure: StructureResult) -> AVPResult:
     else:
         anchor_idx = max(0, len(df) - 30)
 
-    profile_df = df.iloc[anchor_idx:]
+    profile_df = df.iloc[max(anchor_idx, len(df) - 50):]
     if profile_df.empty:
         return AVPResult(anchor_idx, 0.0, 0.0, 0.0, "neutral")
 

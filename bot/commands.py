@@ -122,6 +122,16 @@ class MonitorCog(commands.Cog):
                 await interaction.followup.send("⚠️ All daily picks are already in your watchlist.")
             return
 
+        # Validate symbol exists on Binance before adding
+        try:
+            info = self.market_service.client.get_symbol_info(norm)
+            if not info:
+                await interaction.followup.send(embed=build_error_embed(f"Symbol `{norm}` not found on Binance."))
+                return
+        except Exception:
+            await interaction.followup.send(embed=build_error_embed("Failed to validate symbol with Binance API."))
+            return
+
         if ws.add(interaction.user.id, interaction.channel_id, norm):
             await interaction.followup.send(f"✅ Added `{norm}` to your watchlist.")
         else:
@@ -129,23 +139,40 @@ class MonitorCog(commands.Cog):
 
     @app_commands.command(name="wl_remove", description="Remove a symbol from your watchlist")
     async def wl_remove(self, interaction: discord.Interaction, symbol: str):
+        await interaction.response.defer()
         norm = normalize_symbol(symbol)
         from services.watchlist import WatchlistService
         ws = WatchlistService()
         if ws.remove(interaction.user.id, norm):
-            await interaction.response.send_message(f"🗑️ Removed `{norm}` from your watchlist.")
+            await interaction.followup.send(f"🗑️ Removed `{norm}` from your watchlist.")
         else:
-            await interaction.response.send_message(f"⚠️ `{norm}` was not found in your watchlist.")
+            await interaction.followup.send(f"⚠️ `{norm}` was not found in your watchlist.")
 
     @app_commands.command(name="wl_list", description="View your watchlist")
     async def wl_list(self, interaction: discord.Interaction):
+        await interaction.response.defer()
         from services.watchlist import WatchlistService
         ws = WatchlistService()
         symbols = ws.get_user_symbols(interaction.user.id)
         if not symbols:
-            await interaction.response.send_message("📭 Your watchlist is empty. Use `/wl_add` to start tracking.")
+            await interaction.followup.send("📭 Your watchlist is empty. Use `/wl_add` to start tracking.")
         else:
-            await interaction.response.send_message(f"📋 **Your Watchlist:**\n" + ", ".join(f"`{s}`" for s in symbols))
+            await interaction.followup.send(f"📋 **Your Watchlist:**\n" + ", ".join(f"`{s}`" for s in symbols))
+
+    @app_commands.command(name="wl_clear", description="Clear your entire watchlist")
+    async def wl_clear(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        from services.watchlist import WatchlistService
+        ws = WatchlistService()
+        symbols = ws.get_user_symbols(interaction.user.id)
+        if not symbols:
+            await interaction.followup.send("📭 Your watchlist is already empty.")
+            return
+        count = 0
+        for sym in list(symbols):
+            if ws.remove(interaction.user.id, sym):
+                count += 1
+        await interaction.followup.send(f"🗑️ Cleared **{count}** symbols from your watchlist.")
 
     @app_commands.command(name="daily_picks", description="Get today's top potential coins based on volume and momentum")
     async def daily_picks(self, interaction: discord.Interaction):

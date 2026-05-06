@@ -8,7 +8,7 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     tr = pd.concat([tr0, tr1, tr2], axis=1).max(axis=1)
     return tr.rolling(window=period).mean()
 
-def get_market_structure(df: pd.DataFrame, n: int = 3, atr_multiplier: float = 0.5) -> StructureResult:
+def get_market_structure(df: pd.DataFrame, n: int = 2, atr_multiplier: float = 0.5) -> StructureResult:
     if len(df) < n * 2 + 1:
         return StructureResult(None, None, None, None, "insufficient_data")
         

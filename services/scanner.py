@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 from datetime import datetime, timedelta
 from typing import List, Dict
 from services.binance_client import BinanceClient
@@ -7,8 +8,19 @@ from services.binance_client import BinanceClient
 SCANNER_CACHE_FILE = "daily_picks.json"
 
 class ScannerService:
-    def __init__(self):
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(ScannerService, cls).__new__(cls)
+                cls._instance._init_once()
+            return cls._instance
+
+    def _init_once(self):
         self.client = BinanceClient()
+        self._file_lock = threading.Lock()
         self.daily_picks = self._load_cache()
         
     def _load_cache(self) -> dict:
@@ -21,10 +33,11 @@ class ScannerService:
             return {"date": "", "symbols": []}
             
     def _save_cache(self, date_str: str, symbols: List[str]):
-        data = {"date": date_str, "symbols": symbols}
-        with open(SCANNER_CACHE_FILE, 'w') as f:
-            json.dump(data, f, indent=4)
-        self.daily_picks = data
+        with self._file_lock:
+            data = {"date": date_str, "symbols": symbols}
+            with open(SCANNER_CACHE_FILE, 'w') as f:
+                json.dump(data, f, indent=4)
+            self.daily_picks = data
             
     def get_daily_picks(self) -> List[str]:
         today = datetime.utcnow().strftime('%Y-%m-%d')
@@ -73,3 +86,4 @@ class ScannerService:
             
         except Exception as e:
             print(f"Error refreshing daily picks: {e}")
+

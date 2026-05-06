@@ -1,5 +1,6 @@
 import discord
 import datetime
+import time
 from discord.ext import tasks, commands
 from services.watchlist import WatchlistService
 from services.market_data import MarketDataService
@@ -12,15 +13,36 @@ from analysis.charting import generate_chart
 from bot.embeds import build_basic_response
 from config import DEFAULT_TIMEFRAME
 
+ALERT_CACHE_TTL = 3600  # 1 hour - alerts expire after this
+
 class AlertTasks(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.watchlist = WatchlistService()
         self.market_service = MarketDataService()
-        self.last_alerts = {}
+        self.last_alerts = {}  # {cache_key: timestamp}
         self.alert_loop.start()
         self.daily_scanner_loop.start()
         self.picks_tracker_loop.start()
+    
+    def _is_alert_cached(self, cache_key: str) -> bool:
+        """Check if alert is cached and not expired."""
+        if cache_key not in self.last_alerts:
+            return False
+        elapsed = time.time() - self.last_alerts[cache_key]
+        if elapsed > ALERT_CACHE_TTL:
+            del self.last_alerts[cache_key]
+            return False
+        return True
+    
+    def _cache_alert(self, cache_key: str):
+        """Cache alert with current timestamp."""
+        # Cleanup expired entries periodically
+        now = time.time()
+        expired = [k for k, v in self.last_alerts.items() if now - v > ALERT_CACHE_TTL]
+        for k in expired:
+            del self.last_alerts[k]
+        self.last_alerts[cache_key] = now
 
     def cog_unload(self):
         self.alert_loop.cancel()
@@ -115,7 +137,7 @@ class AlertTasks(commands.Cog):
                 print(f"Error fetching perf for {sym}: {e}")
                 
         if perf_text:
-            embed.add_field(name="Performance", value="\n".join(perf_text), inline=False)
+            embed.description += "\n\n" + "\n".join(perf_text)
             for ch_id in channels:
                 channel = self.bot.get_channel(ch_id)
                 if channel:
@@ -145,10 +167,10 @@ class AlertTasks(commands.Cog):
                 
                 if breakout.state == "valid":
                     cache_key = f"{symbol}_{breakout.level}_confirmed"
-                    if cache_key in self.last_alerts:
+                    if self._is_alert_cached(cache_key):
                         continue
                         
-                    self.last_alerts[cache_key] = True
+                    self._cache_alert(cache_key)
                     
                     rec = build_recommendation(df, structure, breakout, avp)
                     mtf = analyze_mtf(symbol, DEFAULT_TIMEFRAME, self.market_service)
@@ -194,8 +216,8 @@ class AlertTasks(commands.Cog):
                         
                     if is_early:
                         cache_key = f"{symbol}_{early_level}_early"
-                        if cache_key not in self.last_alerts:
-                            self.last_alerts[cache_key] = True
+                        if not self._is_alert_cached(cache_key):
+                            self._cache_alert(cache_key)
                             
                             rec = build_recommendation(df, structure, breakout, avp)
                             

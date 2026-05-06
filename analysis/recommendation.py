@@ -47,7 +47,8 @@ def build_recommendation(df: pd.DataFrame, structure: StructureResult, breakout:
             direction = "neutral"
         elif breakout.state == "valid" and breakout.direction == "bullish":
             status = "Buy Breakout"
-            entry_text = f"**Entry Zone:** `{structure.latest_swing_high:.8f}` (Retest) to `{current_price:.8f}` (Current)\n**Strategy:** Enter partial now, range is breaking up."
+            sh = structure.latest_swing_high if structure.latest_swing_high else current_price
+            entry_text = f"**Entry Zone:** `{sh:.8f}` (Retest) to `{current_price:.8f}` (Current)\n**Strategy:** Enter partial now, range is breaking up."
             confidence = "High"
             note = "Valid bullish breakout out of range."
             direction = "bullish"
