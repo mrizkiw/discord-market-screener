@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 @dataclass
@@ -51,3 +51,16 @@ class MTFResult:
     micro_trend: str
     micro_bias: str
     confluence: str
+
+@dataclass
+class MarketCapResult:
+    coin_id: str
+    current_price: float
+    market_cap: float
+    price_change_24h: float
+    market_cap_change_24h: float
+    signal: str
+    signal_label: str
+    signal_emoji: str
+    interpretation: str
+    available: bool = True

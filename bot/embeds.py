@@ -1,11 +1,11 @@
 import discord
 import datetime
-from models.market import StructureResult, BreakoutResult, AVPResult, RecommendationResult, MTFResult
+from models.market import StructureResult, BreakoutResult, AVPResult, RecommendationResult, MTFResult, MarketCapResult
 
 def build_basic_response(symbol: str, price: float, candle_count: int, interval: str,
                          structure: StructureResult = None, breakout: BreakoutResult = None,
                          avp: AVPResult = None, recommendation: RecommendationResult = None,
-                         mtf: MTFResult = None) -> discord.Embed:
+                         mtf: MTFResult = None, marketcap: MarketCapResult = None) -> discord.Embed:
     
     status_text = recommendation.status if recommendation else "Active Analysis"
     color = discord.Color.blue()
@@ -56,6 +56,27 @@ def build_basic_response(symbol: str, price: float, candle_count: int, interval:
                 embed.add_field(name="🎯 Take Profit", value="\n".join(tp_parts), inline=True)
     if mtf and mtf.macro_tf != "None":
         embed.add_field(name="MTF Confluence", value=f"**{mtf.confluence}**\nMacro ({mtf.macro_tf}): {mtf.macro_trend} / {mtf.macro_bias.title()}\nMicro ({mtf.micro_tf}): {mtf.micro_trend} / {mtf.micro_bias.title()}", inline=False)
+
+    # Market Cap Section
+    if marketcap and marketcap.available:
+        from analysis.marketcap import format_market_cap
+        mcap_str = format_market_cap(marketcap.market_cap)
+        price_chg = f"{marketcap.price_change_24h:+.2f}%"
+        mcap_chg = f"{marketcap.market_cap_change_24h:+.2f}%"
+        divergence = marketcap.market_cap_change_24h - marketcap.price_change_24h
+        div_str = f"{divergence:+.2f}%"
+
+        embed.add_field(
+            name=f"{marketcap.signal_emoji} Market Cap — {marketcap.signal_label}",
+            value=(
+                f"**Market Cap:** {mcap_str}\n"
+                f"**Harga 24h:** {price_chg} | **MCap 24h:** {mcap_chg} | **Divergensi:** {div_str}\n"
+                f"*{marketcap.interpretation}*"
+            ),
+            inline=False
+        )
+    elif marketcap and not marketcap.available:
+        embed.add_field(name="❓ Market Cap", value=marketcap.interpretation, inline=False)
         
     embed.add_field(name="Last Price", value=f"{price:.8f}", inline=False)
     embed.timestamp = datetime.datetime.now(datetime.timezone.utc)

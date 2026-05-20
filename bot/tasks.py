@@ -10,6 +10,7 @@ from analysis.avp import calculate_avp
 from analysis.recommendation import build_recommendation
 from analysis.multi_tf import analyze_mtf
 from analysis.charting import generate_chart
+from analysis.marketcap import fetch_marketcap_data, format_market_cap
 from bot.embeds import build_basic_response
 from config import DEFAULT_TIMEFRAME
 
@@ -24,6 +25,7 @@ class AlertTasks(commands.Cog):
         self.alert_loop.start()
         self.daily_scanner_loop.start()
         self.picks_tracker_loop.start()
+        self.mcap_scan_loop.start()
     
     def _is_alert_cached(self, cache_key: str) -> bool:
         """Check if alert is cached and not expired."""
@@ -48,6 +50,7 @@ class AlertTasks(commands.Cog):
         self.alert_loop.cancel()
         self.daily_scanner_loop.cancel()
         self.picks_tracker_loop.cancel()
+        self.mcap_scan_loop.cancel()
 
     @tasks.loop(time=datetime.time(hour=0, minute=0, tzinfo=datetime.timezone.utc))
     async def daily_scanner_loop(self):
@@ -250,6 +253,89 @@ class AlertTasks(commands.Cog):
                 print(f"[PERMISSION ERROR] Bot missing permissions for {symbol}. Check bot role in that channel. ({e})")
             except Exception as e:
                 print(f"Alert loop error on {symbol}: {e}")
+
+    @tasks.loop(minutes=30)
+    async def mcap_scan_loop(self):
+        """Scan market cap divergence di semua watchlist symbol setiap 30 menit."""
+        await self.bot.wait_until_ready()
+
+        targets = self.watchlist.get_all_targets()
+        if not targets:
+            return
+
+        accumulation_alerts = []  # [(symbol, mcap_result, users)]
+
+        for symbol, users in targets.items():
+            try:
+                mcap = fetch_marketcap_data(symbol)
+                if not mcap.available:
+                    continue
+
+                # Hanya kirim alert untuk sinyal AKUMULASI yang kuat
+                if mcap.signal == "accumulation":
+                    cache_key = f"{symbol}_mcap_accumulation"
+                    if not self._is_alert_cached(cache_key):
+                        self._cache_alert(cache_key)
+                        accumulation_alerts.append((symbol, mcap, users))
+
+            except Exception as e:
+                print(f"[MCap Scan] Error checking {symbol}: {e}")
+
+        # Kirim alert untuk setiap sinyal akumulasi yang ditemukan
+        for symbol, mcap, users in accumulation_alerts:
+            try:
+                divergence = mcap.market_cap_change_24h - mcap.price_change_24h
+                mcap_str = format_market_cap(mcap.market_cap)
+
+                embed = discord.Embed(
+                    title=f"🟢 AKUMULASI TERDETEKSI: {symbol}",
+                    description=(
+                        f"Market cap naik lebih cepat dari harga — sinyal bahwa ada pihak yang **diam-diam akumulasi**."
+                    ),
+                    color=discord.Color.from_rgb(0, 200, 100)
+                )
+                embed.add_field(
+                    name="📊 Statistik Market Cap (24h)",
+                    value=(
+                        f"**Market Cap:** {mcap_str}\n"
+                        f"**Harga:** {mcap.price_change_24h:+.2f}%\n"
+                        f"**Market Cap:** {mcap.market_cap_change_24h:+.2f}%\n"
+                        f"**Divergensi:** +{divergence:.2f}%"
+                    ),
+                    inline=True
+                )
+                embed.add_field(
+                    name="🧠 Interpretasi",
+                    value=mcap.interpretation,
+                    inline=False
+                )
+                embed.add_field(
+                    name="💡 Saran",
+                    value="Pantau price action lebih dekat. Jika harga mulai memantul dari support, itu bisa jadi entry point yang bagus.",
+                    inline=False
+                )
+                embed.set_footer(text="Market Cap via CoinGecko • Sinyal akumulasi tidak menjamin kenaikan")
+                embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
+
+                # Kumpulkan channel unik dari semua user yang pantau symbol ini
+                notified_channels = set()
+                for u in users:
+                    ch_id = int(u['channel_id'])
+                    if ch_id not in notified_channels:
+                        notified_channels.add(ch_id)
+                        channel = self.bot.get_channel(ch_id)
+                        if channel:
+                            try:
+                                mention = f"<@{u['user_id']}>"
+                                await channel.send(
+                                    content=f"{mention} 🟢 **Sinyal Akumulasi** terdeteksi pada `{symbol}`!",
+                                    embed=embed
+                                )
+                            except Exception as e:
+                                print(f"[MCap Alert] Gagal kirim ke channel {ch_id}: {e}")
+
+            except Exception as e:
+                print(f"[MCap Alert] Error processing alert for {symbol}: {e}")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(AlertTasks(bot))

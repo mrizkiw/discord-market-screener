@@ -72,18 +72,20 @@ class MonitorCog(commands.Cog):
         from analysis.recommendation import build_recommendation
         from analysis.multi_tf import analyze_mtf
         from analysis.charting import generate_chart
+        from analysis.marketcap import fetch_marketcap_data
         
         structure = get_market_structure(df)
         breakout = detect_breakout(df, structure)
         avp = calculate_avp(df, structure)
         recommendation = build_recommendation(df, structure, breakout, avp)
         mtf = analyze_mtf(norm_symbol, tf, self.market_service)
+        marketcap = fetch_marketcap_data(norm_symbol)
         
         last_price = float(df.iloc[-1]["close"])
         candle_count = len(df)
         
         # 3. Response
-        embed = build_basic_response(norm_symbol, last_price, candle_count, tf, structure, breakout, avp, recommendation, mtf)
+        embed = build_basic_response(norm_symbol, last_price, candle_count, tf, structure, breakout, avp, recommendation, mtf, marketcap)
         
         try:
             chart_buf = generate_chart(norm_symbol, df, structure, avp)
@@ -191,6 +193,100 @@ class MonitorCog(commands.Cog):
         embed.add_field(name="Top Picks", value=picks_str, inline=False)
         embed.set_footer(text="Updates daily. Use /wl_add to monitor them.")
         
+        await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="mcap", description="Cek market cap dan deteksi sinyal akumulasi/distribusi suatu coin")
+    @app_commands.autocomplete(symbol=symbol_autocomplete)
+    @app_commands.describe(symbol="Simbol coin, contoh: BTCUSDT, ETHUSDT, SOLUSDT")
+    async def mcap(self, interaction: discord.Interaction, symbol: str):
+        await interaction.response.defer(thinking=True)
+
+        norm_symbol = normalize_symbol(symbol)
+
+        from analysis.marketcap import fetch_marketcap_data, format_market_cap
+        mcap = fetch_marketcap_data(norm_symbol)
+
+        if not mcap.available:
+            await interaction.followup.send(embed=build_error_embed(
+                f"Tidak dapat mengambil data market cap untuk `{norm_symbol}`.\n"
+                f"Pastikan simbol valid dan tersedia di CoinGecko.\n\n"
+                f"*{mcap.interpretation}*"
+            ))
+            return
+
+        divergence = mcap.market_cap_change_24h - mcap.price_change_24h
+        mcap_str = format_market_cap(mcap.market_cap)
+
+        # Tentukan warna embed berdasarkan sinyal
+        color_map = {
+            "accumulation": discord.Color.from_rgb(0, 200, 100),
+            "distribution": discord.Color.from_rgb(220, 50, 50),
+            "aligned_up": discord.Color.green(),
+            "aligned_down": discord.Color.red(),
+            "neutral": discord.Color.greyple(),
+        }
+        color = color_map.get(mcap.signal, discord.Color.blue())
+
+        embed = discord.Embed(
+            title=f"{mcap.signal_emoji} Market Cap: {norm_symbol}",
+            description=f"**{mcap.signal_label}**\n\n{mcap.interpretation}",
+            color=color
+        )
+
+        embed.add_field(
+            name="📊 Data 24h",
+            value=(
+                f"**Market Cap:** {mcap_str}\n"
+                f"**Perubahan Harga:** {mcap.price_change_24h:+.2f}%\n"
+                f"**Perubahan MCap:** {mcap.market_cap_change_24h:+.2f}%\n"
+                f"**Divergensi MCap-Harga:** {divergence:+.2f}%"
+            ),
+            inline=True
+        )
+
+        # Panduan interpretasi divergensi
+        if mcap.signal == "accumulation":
+            guide = (
+                "✅ **MCap > Harga** berarti supply bertambah tapi harga gak naik setimpal.\n"
+                "Ini tanda bahwa ada *smart money* yang akumulasi diam-diam.\n"
+                "**Strategi:** Pantau breakout dari resistance terdekat sebagai konfirmasi entry."
+            )
+        elif mcap.signal == "distribution":
+            guide = (
+                "⚠️ **Harga > MCap** berarti pump tidak didukung modal besar.\n"
+                "Kemungkinan ada *retail FOMO* yang mendorong harga naik tanpa akumulasi nyata.\n"
+                "**Strategi:** Hati-hati masuk, waspadai reversal cepat."
+            )
+        elif mcap.signal == "aligned_up":
+            guide = (
+                "📈 Kenaikan organik — harga dan market cap naik bersamaan.\n"
+                "Sinyal bullish yang sehat dan berkelanjutan.\n"
+                "**Strategi:** Bisa ikut trend, tapi tetap perhatikan level resistance."
+            )
+        elif mcap.signal == "aligned_down":
+            guide = (
+                "📉 Penjualan terkoordinasi — harga dan market cap turun bersamaan.\n"
+                "Sinyal bearish, hindari masuk dulu.\n"
+                "**Strategi:** Tunggu stabilisasi atau cari level support kuat."
+            )
+        else:
+            guide = "Pergerakan terlalu kecil untuk memberikan sinyal yang berarti. Tunggu konfirmasi lebih lanjut."
+
+        embed.add_field(name="💡 Interpretasi & Strategi", value=guide, inline=False)
+        embed.add_field(
+            name="ℹ️ Cara Baca Divergensi",
+            value=(
+                "`MCap Change - Price Change = Divergensi`\n"
+                "• **Divergensi > +2.5%** → Akumulasi tersembunyi\n"
+                "• **Divergensi < -2.5%** → Pump lemah / distribusi\n"
+                "• **Mendekati 0%** → Pergerakan normal / seimbang"
+            ),
+            inline=False
+        )
+        embed.set_footer(text=f"Data via CoinGecko (ID: {mcap.coin_id}) • Cache 5 menit")
+        import datetime
+        embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
+
         await interaction.followup.send(embed=embed)
 
 async def setup(bot: commands.Bot):
